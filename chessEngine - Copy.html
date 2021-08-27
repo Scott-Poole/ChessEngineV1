@@ -1,0 +1,1061 @@
+<!DOCTYPE html>
+<html>
+	<body>
+	
+
+		<canvas id="myCanvas" width="400" height="400" style="border:1px solid #000000;">
+			Your browser does not support the canvas element.
+		</canvas>
+		<button id="undo">Undo Move</button>
+		<button id="newGame">New Game</button>
+		<script>
+			var canvas = document.getElementById('myCanvas');
+			var context = canvas.getContext("2d");
+			var newGame = document.getElementById('newGame');
+			var undo = document.getElementById('undo');
+			var movesToDraw = [];
+			var selectedSquare = -1;
+			var board = [];
+			var moveHistory = [];
+			var whiteTurn = true;
+			var humanIsBlack;
+			var ck = {check:'n',nWMoves:0,nBMoves:0,nWThreats:0,nBThreats:0};
+			var evaluation = 0;
+			var lastTime;
+			var cDepth;
+			//piece images
+			var whitePawn = new Image();
+			var whiteRook = new Image();
+			var whiteKnight = new Image();
+			var whiteBishop = new Image();
+			var whiteKing = new Image();
+			var whiteQueen = new Image();
+			var blackPawn = new Image();
+			var blackRook = new Image();
+			var blackKnight = new Image();
+			var blackBishop = new Image();
+			var blackKing = new Image();
+			var blackQueen = new Image();
+			whitePawn.src = 'wp.png';
+			whiteRook.src = 'wr.png';
+			whiteKnight.src = 'wkn.png';
+			whiteBishop.src = 'wb.png';
+			whiteKing.src = 'wk.png';
+			whiteQueen.src = 'wq.png';
+			blackPawn.src = 'bp.png';
+			blackRook.src = 'br.png';
+			blackKnight.src = 'bkn.png';
+			blackBishop.src = 'bb.png';
+			blackKing.src = 'bk.png';
+			blackQueen.src = 'bq.png';
+			var start_time;
+			
+			var Pawn = function(param){
+				var self = {
+					color:param.color, position:param.position,
+				};
+				self.type = 'p';
+				self.value = 1;
+				self.numMoves = 0;
+				self.getMoves = function(){
+					var moves = [];
+					if(self.color == 'b'){
+						if(self.position + 8 < 64 && board[self.position + 8] == null){
+							moves.push(self.position + 8);
+							if(self.numMoves == 0 && board[self.position + 16] == null){
+								moves.push(self.position + 16);
+							}
+						}
+						if((self.position)%8!=0){
+							if(board[self.position + 7] != null && board[self.position + 7].color == 'w'){
+								moves.push(self.position + 7);
+							}
+						}
+						if((self.position+1)%8!=0){
+							if(board[self.position + 9] != null && board[self.position + 9].color == 'w'){
+								moves.push(self.position + 9);
+							}
+						}
+					}else{
+						if(self.position - 8 >= 0 && board[self.position - 8] == null){
+							moves.push(self.position - 8);
+							if(self.numMoves == 0 && board[self.position - 16] == null){
+								moves.push(self.position - 16);
+							}
+						}
+						if((self.position)%8!=0){
+							if(board[self.position - 9] != null && board[self.position - 9].color == 'b'){
+								moves.push(self.position - 9);
+							}
+						}
+						if((self.position+1)%8!=0){
+							if(board[self.position - 7] != null && board[self.position - 7].color == 'b'){
+								moves.push(self.position - 7);
+							}
+						}
+					}
+					return moves;
+				}
+				return self;
+			}
+			var Rook = function(param){
+				var self = {
+					color:param.color, position:param.position,
+				};
+				self.type = 'r';
+				self.value = 5;
+				self.numMoves = 0;
+				self.getMoves = function(){
+					var moves = [];
+					var i = self.position+1;
+					while(i%8!=0){
+						if(board[i] == null){
+							moves.push(i);
+						}else if(board[i].color != self.color){
+							moves.push(i);
+							break;
+						}else{
+							break;
+						}
+						i++;
+					}
+					i = self.position-1;
+					while(i%8!=7 && i >=0 ){
+						if(board[i] == null){
+							moves.push(i);
+						}else if(board[i].color != self.color){
+							moves.push(i);
+							break;
+						}else{
+							break;
+						}
+						i--;
+					}
+					i = self.position-8;
+					while(i >= 0){
+						if(board[i] == null){
+							moves.push(i);
+						}else if(board[i].color != self.color){
+							moves.push(i);
+							break;
+						}else{
+							break;
+						}
+						i-=8;
+					}
+					i = self.position+8;
+					while(i < 64){
+						if(board[i] == null){
+							moves.push(i);
+						}else if(board[i].color != self.color){
+							moves.push(i);
+							break;
+						}else{
+							break;
+						}
+						i+=8;
+					}
+					return moves;
+				}
+				return self;
+			}
+			var Knight = function(param){
+				var self = {
+					color:param.color, position:param.position,
+				};
+				self.type = 'kn';
+				self.value = 3.1;
+				self.numMoves = 0;
+				self.getMoves = function(){
+					var moves = [];
+					//2 right
+					if(self.position%8<6){
+						if(self.position - 8 >= 0 && (board[self.position-6] == null || board[self.position-6].color != self.color)){
+							moves.push(self.position-6);
+						}
+						if(self.position + 8 < 64 && (board[self.position+10] == null || board[self.position+10].color != self.color)){
+							moves.push(self.position+10);
+						}
+					}
+					//1 right
+					if(self.position%8<7){
+						if(self.position - 16 >= 0 && (board[self.position-15] == null || board[self.position-15].color != self.color)){
+							moves.push(self.position-15);
+						}
+						if(self.position + 16 < 64 && (board[self.position+17] == null || board[self.position+17].color != self.color)){
+							moves.push(self.position+17);
+						}
+					}
+					//1 left
+					if(self.position%8>0){
+						if(self.position - 16 >= 0 && (board[self.position-17] == null || board[self.position-17].color != self.color)){
+							moves.push(self.position-17);
+						}
+						if(self.position + 16 < 64 && (board[self.position+15] == null || board[self.position+15].color != self.color)){
+							moves.push(self.position+15);
+						}
+					}
+					//2 right
+					if(self.position%8>1){
+						if(self.position - 8 >= 0 && (board[self.position-10] == null || board[self.position-10].color != self.color)){
+							moves.push(self.position-10);
+						}
+						if(self.position + 8 < 64 && (board[self.position+6] == null || board[self.position+6].color != self.color)){
+							moves.push(self.position+6);
+						}
+					}
+					return moves;
+				}
+				return self;
+			}
+			var Bishop = function(param){
+				var self = {
+					color:param.color, position:param.position,
+				};
+				self.type = 'b';
+				self.value = 3.1;
+				self.numMoves = 0;
+				self.getMoves = function(){
+					var moves = [];
+					var i = self.position-7;
+					while(i%8!=0 && i>=0){
+						if(board[i] == null){
+							moves.push(i);
+						}else if(board[i].color != self.color){
+							moves.push(i);
+							break;
+						}else{
+							break;
+						}
+						i-=7;
+					}
+					i = self.position-9;
+					while(i%8!=7 && i>=0){
+						if(board[i] == null){
+							moves.push(i);
+						}else if(board[i].color != self.color){
+							moves.push(i);
+							break;
+						}else{
+							break;
+						}
+						i-=9;
+					}
+					i = self.position+7;
+					while(i%8!=7 && i<64){
+						if(board[i] == null){
+							moves.push(i);
+						}else if(board[i].color != self.color){
+							moves.push(i);
+							break;
+						}else{
+							break;
+						}
+						i+=7;
+					}
+					i = self.position+9;
+					while(i%8!=0 && i<64){
+						if(board[i] == null){
+							moves.push(i);
+						}else if(board[i].color != self.color){
+							moves.push(i);
+							break;
+						}else{
+							break;
+						}
+						i+=9;
+					}
+					return moves;
+				}
+				return self;
+			}
+			var Queen = function(param){
+				var self = {
+					color:param.color, position:param.position,
+				};
+				self.type = 'q';
+				self.value = 9;
+				self.numMoves = 0;
+				self.getMoves = function(){
+					var moves = [];
+					var i = self.position+1;
+					while(i%8!=0){
+						if(board[i] == null){
+							moves.push(i);
+						}else if(board[i].color != self.color){
+							moves.push(i);
+							break;
+						}else{
+							break;
+						}
+						i++;
+					}
+					i = self.position-1;
+					while(i%8!=7 && i >=0){
+						if(board[i] == null){
+							moves.push(i);
+						}else if(board[i].color != self.color){
+							moves.push(i);
+							break;
+						}else{
+							break;
+						}
+						i--;
+					}
+					i = self.position-8;
+					while(i >= 0){
+						if(board[i] == null){
+							moves.push(i);
+						}else if(board[i].color != self.color){
+							moves.push(i);
+							break;
+						}else{
+							break;
+						}
+						i-=8;
+					}
+					i = self.position+8;
+					while(i < 64){
+						if(board[i] == null){
+							moves.push(i);
+						}else if(board[i].color != self.color){
+							moves.push(i);
+							break;
+						}else{
+							break;
+						}
+						i+=8;
+					}
+					i = self.position-7;
+					while(i%8!=0 && i>=0){
+						if(board[i] == null){
+							moves.push(i);
+						}else if(board[i].color != self.color){
+							moves.push(i);
+							break;
+						}else{
+							break;
+						}
+						i-=7;
+					}
+					i = self.position-9;
+					while(i%8!=7 && i>=0){
+						if(board[i] == null){
+							moves.push(i);
+						}else if(board[i].color != self.color){
+							moves.push(i);
+							break;
+						}else{
+							break;
+						}
+						i-=9;
+					}
+					i = self.position+7;
+					while(i%8!=7 && i<64){
+						if(board[i] == null){
+							moves.push(i);
+						}else if(board[i].color != self.color){
+							moves.push(i);
+							break;
+						}else{
+							break;
+						}
+						i+=7;
+					}
+					i = self.position+9;
+					while(i%8!=0 && i<64){
+						if(board[i] == null){
+							moves.push(i);
+						}else if(board[i].color != self.color){
+							moves.push(i);
+							break;
+						}else{
+							break;
+						}
+						i+=9;
+					}
+					return moves;
+				}
+				return self;
+			}
+			var King = function(param){
+				var self = {
+					color:param.color, position:param.position,
+				};
+				self.type = 'k';
+				self.value = 10;
+				self.numMoves = 0;
+				self.getMoves = function(){
+					var moves = [];
+					//right
+					if(self.position%8<7){
+						if(board[self.position+1] == null || board[self.position+1].color != self.color){
+							moves.push(self.position+1);
+						}
+						if(self.position + 8 < 64 && (board[self.position+9] == null || board[self.position+9].color != self.color)){
+							moves.push(self.position+9);
+						}
+						if(self.position - 8 >= 0 && (board[self.position-7] == null || board[self.position-7].color != self.color)){
+							moves.push(self.position-7);
+						}
+					}
+					//left
+					if(self.position%8>0){
+						if(board[self.position-1] == null || board[self.position-1].color != self.color){
+							moves.push(self.position-1);
+						}
+						if(self.position + 8 < 64 && (board[self.position+7] == null || board[self.position+7].color != self.color)){
+							moves.push(self.position+7);
+						}
+						if(self.position - 8 >= 0 && (board[self.position-9] == null || board[self.position-9].color != self.color)){
+							moves.push(self.position-9);
+						}
+					}
+					//up and down
+					if(self.position - 8 >= 0 && (board[self.position-8] == null || board[self.position-8].color != self.color)){
+						moves.push(self.position-8);
+					}
+					if(self.position + 8 < 64 && (board[self.position+8] == null || board[self.position+8].color != self.color)){
+						moves.push(self.position+8);
+					}
+					//castle
+					if(self.numMoves == 0 && !ck.check.includes(self.color)){
+						if(board[self.position+1] == null && board[self.position+2] == null && board[self.position+3] != null && board[self.position+3].type == 'r' && !board[self.position+3].numMoves){
+							moves.push(self.position+2);
+						}
+						if(board[self.position-1] == null && board[self.position-2] == null && board[self.position-3] == null && board[self.position-4] != null && board[self.position-4].type == 'r' && !board[self.position-4].numMoves){
+							moves.push(self.position-2);
+						}
+					}
+					return moves;
+				}
+				return self;
+			}
+			function init(){
+				movesToDraw = [];
+				selectedSquare = -1;
+				board = [];
+				moveHistory = [];
+				whiteTurn = true;
+				humanIsBlack = Math.random() < .5;
+				ck = {check:'n',nWMoves:0,nBMoves:0,nWThreats:0,nBThreats:0};
+				lastTime = 0;
+				cDepth = 7;
+				for(var i = 0; i < 64; i++){
+					board[i] = null;
+				}
+				board[0] = Rook({color:'b',position:0});board[1] = Knight({color:'b',position:1});board[2] = Bishop({color:'b',position:2});board[3] = Queen({color:'b',position:3});board[4] = King({color:'b',position:4});board[5] = Bishop({color:'b',position:5});board[6] = Knight({color:'b',position:6});board[7] = Rook({color:'b',position:7});
+				board[56] = Rook({color:'w',position:56});board[57] = Knight({color:'w',position:57});board[58] = Bishop({color:'w',position:58});board[59] = Queen({color:'w',position:59});board[60] = King({color:'w',position:60});board[61] = Bishop({color:'w',position:61});board[62] = Knight({color:'w',position:62});board[63] = Rook({color:'w',position:63});
+				for(var i = 0; i < 8; i++){
+					board[8+i] = Pawn({color:'b',position:8+i});
+					board[48+i] = Pawn({color:'w',position:48+i});
+				}
+				if(humanIsBlack){
+					makeMove();
+				}
+				draw();
+			}
+			function makeMove(){
+				var startTime = new Date().getTime();
+				evaluation = eval();
+				var m = maxi(3);
+				/*cDepth = 5;
+				start_time = performance.now();
+				var m = maxi(cDepth);
+				if(!m.success){
+					cDepth = 3;
+					start_time = performance.now();
+					m = maxi(cDepth);
+					if(!m.success){
+						cDepth = 3;
+						start_time = performance.now();
+						m = maxi(cDepth);
+						
+					}
+				}*/
+				if(board[m.a] == null || (board[m.a].color == 'b' && humanIsBlack) || (board[m.a].color == 'w' && !humanIsBlack) ){
+					alert('cpu resigns');
+				}else{
+					var mov = movePiece(m.a,m.b,true);
+					if(humanIsBlack){
+						selectedSquare = 63 - m.b;
+					}else{
+						selectedSquare = m.b;
+					}
+					var endTime = new Date().getTime();
+					
+					console.log(cDepth);
+					console.log(endTime - startTime);
+					if(mov.ckmate){
+						alert('ckmate');
+					}
+					if(mov.stalemate){
+						alert('stmate');
+					}
+				}
+				
+			}
+			function maxi(depth){
+				if(depth == 0){
+					return eval();
+				}
+				var max = -9999;
+				var aa = 0;
+				var bb = 0;
+				var threats = 0;
+				var posMoves = 0;
+				for(var i = 0; i < 64; i++){
+					if(board[i] != null){
+						if(board[i].color == 'w' && humanIsBlack || board[i].color == 'b' && !humanIsBlack){
+							var moves = board[i].getMoves();
+							for(var j = 0; j < moves.length; j++){
+								var m = movePiece(i, moves[j],true);
+								if(m.isValid){
+									var score = -9999;
+									var e = eval();
+									if(e > evaluation - 7){
+										score = mini(depth-1);
+									}
+									if(m.ckmate){
+										score += 10;
+									}
+									if(m.stalemate && e > -6){
+										score -= 10;
+									}else if(m.stalemate && e <= -6){
+										score += 2;
+									}
+									
+									if(score > max){
+										max = score;
+										aa = i;
+										bb = moves[j];
+										if(humanIsBlack){
+											threats = m.nBThreats;
+											posMoves = m.nWMoves;
+										}else{
+											threats = m.nWThreats;
+											posMoves = m.nBMoves;
+										}
+									}else if(score == max){
+										if((humanIsBlack && (m.nBThreats > threats || (m.nBThreats == threats && m.nWMoves > posMoves)))
+										||(!humanIsBlack && (m.nWThreats > threats || (m.nWThreats == threats && m.nBMoves > posMoves))))
+										{
+											aa = i;
+											bb = moves[j];
+											threats = m.nBThreats;
+											posMoves = m.nWMoves;
+										}
+									}
+									undoMove();
+									/*if(performance.now() - start_time > 3000){
+										return {max:max,a:aa,b:bb,succes:false};
+									}*/
+								}
+							}
+						}
+					}
+				}
+				return {max:max,a:aa,b:bb,succes:true};
+			}
+			function mini(depth){
+				if(depth == 0){
+					return eval();
+				}
+				var min = 9999;
+				for(var i = 0; i < 64; i++){
+					if(board[i] != null){
+						if(board[i].color == 'w' && !humanIsBlack || board[i].color == 'b' && humanIsBlack){
+							var moves = board[i].getMoves();
+							for(var j = 0; j < moves.length; j++){
+							var m = movePiece(i, moves[j],true);
+								if(m.isValid){
+									var score = maxi(depth-1).max;
+									var e = eval();
+									if(m.ckmate){
+										score -= 10;
+									}
+									if(m.stalemate && e < 6){
+										score += 10;
+									}else if(m.stalemate && e >= 6){
+										score -= 2;
+									}
+									if(score < min){
+										min = score;
+									}
+									undoMove();
+								}
+							}
+						}
+					}
+				}
+				return min;
+			}
+			function eval(){
+				var score = 0; 
+				for(var i = 0; i < 64; i++){
+					if(board[i] != null){
+						if(humanIsBlack){
+							if(board[i].color == 'w'){
+								score += board[i].value;
+							}else{
+								score -= board[i].value;
+							}
+						}else{
+							if(board[i].color == 'w'){
+								score -= board[i].value;
+							}else{
+								score += board[i].value;
+							}
+						}
+					}
+				}
+				return score;
+			}
+			function getCheck(){
+				var check = '';
+				var numWMoves = 0;
+				var numBMoves = 0;
+				var numWThreats = 0;
+				var numBThreats = 0;
+				for(var j = 0; j < board.length; j++){
+					if(board[j] != null){
+						var possibleMoves = board[j].getMoves();
+						if(board[j].color == 'w'){
+							numWMoves += possibleMoves.length;
+						}else{
+							numBMoves += possibleMoves.length;
+						}
+						for(var k = 0; k < possibleMoves.length; k++){
+							if(board[possibleMoves[k]] != null){
+								if(board[possibleMoves[k]].color == 'w' && board[j].color == 'b'){
+									if(board[possibleMoves[k]].type == 'k'){
+										check += 'w';
+									}
+									numWThreats++;
+								}else if(board[possibleMoves[k]].color == 'b' && board[j].color == 'w'){
+									if(board[possibleMoves[k]].type == 'k'){
+										check += 'b';
+									}
+									numBThreats++;
+								}
+							}
+						}
+					}
+				}
+				return {check:check,nWMoves:numWMoves,nBMoves:numBMoves,nWThreats:numWThreats,nBThreats:numBThreats};
+			}
+			function isStalemate(){
+				var threeFoldRep = false;
+				if(moveHistory.length > 5){
+					var a1 = moveHistory[moveHistory.length - 1].a;
+					var a2 = moveHistory[moveHistory.length - 2].a;
+					var b1 = moveHistory[moveHistory.length - 1].b;
+					var b2 = moveHistory[moveHistory.length - 2].b;
+					if(a1 == moveHistory[moveHistory.length - 3].b &&
+					   b1 == moveHistory[moveHistory.length - 3].a &&
+					   a2 == moveHistory[moveHistory.length - 4].b &&
+					   b2 == moveHistory[moveHistory.length - 4].a &&
+					   a1 == moveHistory[moveHistory.length - 5].a &&
+					   b1 == moveHistory[moveHistory.length - 5].b &&
+					   a2 == moveHistory[moveHistory.length - 6].a &&
+					   b2 == moveHistory[moveHistory.length - 6].b){
+						threeFoldRep = true;
+						console.log('3foldrepetition');
+					}
+				}
+				var smate = true;
+				if(whiteTurn){
+					for(var i = 0; i < board.length; i++){
+						if(board[i] != null && board[i].color == 'w'){
+							var possibleMoves = board[i].getMoves();
+							for(var k = 0; k < possibleMoves.length; k++){
+								if(movePiece(i, possibleMoves[k],false).isValid){
+									undoMove();
+									smate = false;
+									return (threeFoldRep || smate);
+								}
+							}
+						}
+					}
+				}else{
+					for(var i = 0; i < board.length; i++){
+						if(board[i] != null && board[i].color == 'b'){
+							var possibleMoves = board[i].getMoves();
+							for(var k = 0; k < possibleMoves.length; k++){
+								if(movePiece(i, possibleMoves[k],false).isValid){
+									undoMove();
+									smate = false;
+									return (threeFoldRep || smate);
+								}
+							}
+						}
+					}
+				}
+				console.log('stalemate found');
+				return (threeFoldRep || smate);
+			}
+			function isCheckmate(){
+				if(whiteTurn){
+					for(var i = 0; i < board.length; i++){
+						if(board[i] != null && board[i].color == 'w'){
+							var possibleMoves = board[i].getMoves();
+							for(var k = 0; k < possibleMoves.length; k++){
+								if(movePiece(i, possibleMoves[k], false).isValid){
+									undoMove();
+									return false;
+								}
+							}
+						}
+					}
+				}else{
+					for(var i = 0; i < board.length; i++){
+						if(board[i] != null && board[i].color == 'b'){
+							var possibleMoves = board[i].getMoves();
+							for(var k = 0; k < possibleMoves.length; k++){
+								if(movePiece(i, possibleMoves[k], false).isValid){
+									undoMove();
+									return false;
+								}
+							}
+						}
+					}
+				}
+				return true;
+			}
+			function undoMove(){
+				if(moveHistory.length > 0){
+					var lastMove = moveHistory.pop();
+					ck = lastMove.ck;
+					board[lastMove.a] = board[lastMove.b];
+					board[lastMove.a].position = lastMove.a;
+					if(board[lastMove.a].numMoves == 1){
+						board[lastMove.a].value -= 0.1;
+					}
+					board[lastMove.a].numMoves--;
+					board[lastMove.b] = lastMove.piece;
+					if(board[lastMove.a].type == 'k' && Math.abs(lastMove.a-lastMove.b) == 2){
+						if(lastMove.b < lastMove.a){
+							board[lastMove.b-2] = board[lastMove.b+1];
+							board[lastMove.b+1] = null;
+							board[lastMove.b-2].numMoves--;
+							board[lastMove.b-2].position = lastMove.b-2;
+						}else{
+							board[lastMove.b+1] = board[lastMove.b-1];
+							board[lastMove.b-1] = null;
+							board[lastMove.b+1].numMoves--;
+							board[lastMove.b+1].position = lastMove.b+1;
+						}
+					}
+					//promotion
+					if(board[lastMove.a].type == 'q'){
+						if(board[lastMove.a].color == 'w' && lastMove.b < 8 && lastMove.type == 'p'){
+							board[lastMove.a] = Pawn({color:'w',position:lastMove.a});
+							board[lastMove.a].value = 1.5;
+						}
+ 						if(board[lastMove.a].color == 'b' && lastMove.b > 55 && lastMove.type == 'p'){
+							board[lastMove.a] = Pawn({color:'b',position:lastMove.a});
+							board[lastMove.a].value = 1.5;
+						}
+					}
+					
+					if(board[lastMove.a].type == 'p'){
+						board[lastMove.a].value -= 0.05;
+					}
+					whiteTurn = !whiteTurn;
+				}
+				movesToDraw = [];
+			}
+			function movePiece(a, b, ckStalemate){
+				var move = {};
+				move.a = a;
+				move.b = b;
+				move.piece = board[b];
+				move.type = board[a].type;
+				move.ck = ck;
+				moveHistory.push(move);
+				board[b] = board[a];
+				board[a] = null;
+				//castle move
+				if(board[b].type == 'k' && Math.abs(a-b) == 2){
+					if(b < a){
+						board[b+1] = board[b-2];
+						board[b-2] = null;
+						board[b+1].numMoves++;
+						board[b+1].position = b+1;
+					}else{
+						board[b-1] = board[b+1];
+						board[b+1] = null;
+						board[b-1].numMoves++;
+						board[b-1].position = b-1;
+					}
+				}
+				//promotion
+				if(board[b].type == 'p'){
+					board[b].value += .05;
+					if(board[b].color == 'w' && b < 8){
+						board[b] = Queen({color:'w',position:b});
+					}
+					if(board[b].color == 'b' && b > 55){
+						board[b] = Queen({color:'b',position:b});
+					}
+				}
+				board[b].numMoves++;
+				if(board[b].numMoves == 1){
+					board[b].value += 0.1;
+				}
+				board[b].position = b;
+				whiteTurn = !whiteTurn;
+				ck = getCheck();
+				if(ck.check != ''){
+					if(ck.check.includes('w') && !whiteTurn || ck.check.includes('b') && whiteTurn){
+						undoMove();
+						return {isValid:false, ckmate:false, stalemate:false,nWMoves:ck.nWMoves,nBMoves:ck.nBMoves,nWThreats:ck.nWThreats,nBThreats:ck.nBThreats};
+					}else if(ck.check.includes('b') && !whiteTurn || ck.check.includes('w') && whiteTurn){
+						if(isCheckmate()){
+							return {isValid:true, ckmate:true, stalemate:false,nWMoves:ck.nWMoves,nBMoves:ck.nBMoves,nWThreats:ck.nWThreats,nBThreats:ck.nBThreats};
+						}
+					}
+				}else{
+					if(ckStalemate && isStalemate()){
+						return {isValid:true, ckmate:false, stalemate:true,nWMoves:ck.nWMoves,nBMoves:ck.nBMoves,nWThreats:ck.nWThreats,nBThreats:ck.nBThreats};
+					}
+				}
+				return {isValid:true, ckmate:false, stalemate:false,nWMoves:ck.nWMoves,nBMoves:ck.nBMoves,nWThreats:ck.nWThreats,nBThreats:ck.nBThreats};
+			}
+			function draw(){
+				context.clearRect(0,0,myCanvas.width,myCanvas.length);
+				//board
+				var a = 0;
+				var r = 0;
+				if(humanIsBlack){
+					for(var i = 0; i < 8; i++){
+						for(var j = 0; j < 8; j++){
+							if(movesToDraw.includes(63-a)){
+								context.fillStyle = "#0000ff";
+								context.fillRect((j)*50,(i)*50,50,50);
+							}
+							else if(a==selectedSquare){
+								context.fillStyle = "#00ff00";
+								context.fillRect(j*50,i*50,50,50);
+							}
+							else if(a % 2==r){
+								context.fillStyle = "#d8af86";
+								context.fillRect(j*50,i*50,50,50);
+							}else{
+								context.fillStyle = "#654321";
+								context.fillRect(j*50,i*50,50,50);
+							}
+							a++;
+						}
+						r++;
+						if(r>1){
+							r=0;
+						}
+					}
+				}else{
+					for(var i = 0; i < 8; i++){
+						for(var j =0; j < 8; j++){
+							if(movesToDraw.includes(a)){
+								context.fillStyle = "#0000ff";
+								context.fillRect((j)*50,(i)*50,50,50);
+							}
+							else if(a==selectedSquare){
+								context.fillStyle = "#00ff00";
+								context.fillRect(j*50,i*50,50,50);
+							}
+							else if(a % 2==r){
+								context.fillStyle = "#d8af86";
+								context.fillRect(j*50,i*50,50,50);
+							}else{
+								context.fillStyle = "#654321";
+								context.fillRect(j*50,i*50,50,50);
+							}
+							a++;
+						}
+						r++;
+						if(r>1){
+							r=0;
+						}
+					}
+				}//pieces
+				if(humanIsBlack){
+					for(var i = 0; i < 64; i++){
+						if(board[63-i] != null){
+							if(board[63-i].type == 'p'){
+								if(board[63-i].color == 'w'){
+									context.drawImage(whitePawn, ((i)%8)*50 , Math.floor((i)/8)*50);
+								}else{
+									context.drawImage(blackPawn, ((i)%8)*50 , Math.floor((i)/8)*50);
+								}
+							}else if(board[63-i].type == 'k'){
+								if(board[63-i].color == 'w'){
+									context.drawImage(whiteKing, ((i)%8)*50 , Math.floor((i)/8)*50);
+								}else{
+									context.drawImage(blackKing, ((i)%8)*50 , Math.floor((i)/8)*50);
+								}
+							}else if(board[63-i].type == 'r'){
+								if(board[63-i].color == 'w'){
+									context.drawImage(whiteRook, ((i)%8)*50 , Math.floor((i)/8)*50);
+								}else{
+									context.drawImage(blackRook, ((i)%8)*50 , Math.floor((i)/8)*50);
+								}
+							}else if(board[63-i].type == 'q'){
+								if(board[63-i].color == 'w'){
+									context.drawImage(whiteQueen, ((i)%8)*50 , Math.floor((i)/8)*50);
+								}else{
+									context.drawImage(blackQueen, ((i)%8)*50 , Math.floor((i)/8)*50);
+								}
+							}else if(board[63-i].type == 'b'){
+								if(board[63-i].color == 'w'){
+									context.drawImage(whiteBishop, ((i)%8)*50 , Math.floor((i)/8)*50);
+								}else{
+									context.drawImage(blackBishop, ((i)%8)*50 , Math.floor((i)/8)*50);
+								}
+							}else if(board[63-i].type == 'kn'){
+								if(board[63-i].color == 'w'){
+									context.drawImage(whiteKnight, ((i)%8)*50 , Math.floor((i)/8)*50);
+								}else{
+									context.drawImage(blackKnight, ((i)%8)*50 , Math.floor((i)/8)*50);
+								}
+							}
+						}
+					}
+				}else{
+					for(var i = 0; i < 64; i++){
+						if(board[i] != null){
+							if(board[i].type == 'p'){
+								if(board[i].color == 'w'){
+									context.drawImage(whitePawn, ((i)%8)*50 , Math.floor((i)/8)*50);
+								}else{
+									context.drawImage(blackPawn, ((i)%8)*50 , Math.floor((i)/8)*50);
+								}
+							}else if(board[i].type == 'k'){
+								if(board[i].color == 'w'){
+									context.drawImage(whiteKing, ((i)%8)*50 , Math.floor((i)/8)*50);
+								}else{
+									context.drawImage(blackKing, ((i)%8)*50 , Math.floor((i)/8)*50);
+								}
+							}else if(board[i].type == 'r'){
+								if(board[i].color == 'w'){
+									context.drawImage(whiteRook, ((i)%8)*50 , Math.floor((i)/8)*50);
+								}else{
+									context.drawImage(blackRook, ((i)%8)*50 , Math.floor((i)/8)*50);
+								}
+							}else if(board[i].type == 'q'){
+								if(board[i].color == 'w'){
+									context.drawImage(whiteQueen, ((i)%8)*50 , Math.floor((i)/8)*50);
+								}else{
+									context.drawImage(blackQueen, ((i)%8)*50 , Math.floor((i)/8)*50);
+								}
+							}else if(board[i].type == 'b'){
+								if(board[i].color == 'w'){
+									context.drawImage(whiteBishop, ((i)%8)*50 , Math.floor((i)/8)*50);
+								}else{
+									context.drawImage(blackBishop, ((i)%8)*50 , Math.floor((i)/8)*50);
+								}
+							}else if(board[i].type == 'kn'){
+								if(board[i].color == 'w'){
+									context.drawImage(whiteKnight, ((i)%8)*50 , Math.floor((i)/8)*50);
+								}else{
+									context.drawImage(blackKnight, ((i)%8)*50 , Math.floor((i)/8)*50);
+								}
+							}
+						}
+					}
+				}
+				/*context.font = "30px Arial";
+				if(humanIsBlack){
+					for(var i = 0; i < 64; i++){
+						if(board[63-i] != null){
+							context.fillStyle = "#FFFFFF";
+							if(board[63-i].color == 'b'){
+								context.fillStyle = "#000000";
+							}
+							context.fillText(board[63-i].type, ((i)%8)*50 +10, Math.floor((i)/8)*50 +30);
+						}
+					}
+				}else{
+					for(var i = 0; i < 64; i++){
+						if(board[i] != null){
+							context.fillStyle = "#FFFFFF";
+							if(board[i].color == 'b'){
+								context.fillStyle = "#000000";
+							}
+							context.fillText(board[i].type, ((i)%8)*50 +10, Math.floor((i)/8)*50 +30);
+						}
+					}
+				}*/
+			}
+			newGame.onclick = function(){
+				init();
+			}
+			undo.onclick = function(){
+				undoMove();
+				undoMove();
+				movesToDraw = [];
+				selectedSquare = -1;
+				draw();
+			}
+			canvas.onclick = function(event){
+				if((humanIsBlack && !whiteTurn) || (!humanIsBlack && whiteTurn)){
+					var rect = this.getBoundingClientRect();
+					var x = Math.floor((event.clientX - rect.left) / 50);
+					var y = Math.floor((event.clientY - rect.top) / 50);
+					var ss = (y * 8) + x;
+					if(ss == selectedSquare){
+						movesToDraw = [];
+						selectedSquare = -1;
+					}
+					else{
+						var previousSS = selectedSquare;
+						selectedSquare = ss;
+						
+						if(humanIsBlack){
+							if(movesToDraw.includes(63 - selectedSquare)){
+								var m = movePiece(63-previousSS,63-selectedSquare,true);
+								if(m.ckmate){
+									alert('checkmate');
+								}else if(m.stalemate){
+									alert('stalemate');
+								}else if(m.isValid){
+									makeMove();
+								}
+							}
+							if(board[63-selectedSquare] != null){
+								if(whiteTurn && board[63-selectedSquare].color == 'w' || !whiteTurn && board[63-selectedSquare].color == 'b'){
+									movesToDraw = board[63-selectedSquare].getMoves();
+								}else{
+									movesToDraw = [];
+								}
+							}else{
+								movesToDraw = [];
+							}
+						}else{
+							if(movesToDraw.includes(selectedSquare)){
+								var m = movePiece(previousSS,selectedSquare,true);
+								if(m.ckmate){
+									alert('checkmate');
+								}else if(m.stalemate){
+									alert('stalemate');
+								}else if(m.isValid){
+									makeMove();
+								}
+							}
+							if(board[selectedSquare] != null){
+								if(whiteTurn && board[selectedSquare].color == 'w' || !whiteTurn && board[selectedSquare].color == 'b'){
+									movesToDraw = board[selectedSquare].getMoves();
+								}else{
+									movesToDraw = [];
+								}
+							}else{
+								movesToDraw = [];
+							}
+						}
+						
+					}
+				}
+				draw();
+			}
+		</script>
+	</body>
+</html>
